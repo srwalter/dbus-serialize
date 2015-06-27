@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
 use rustc_serialize::{Encoder,Encodable};
-use types::{Value,BasicValue,Struct,Signature};
+
+use types::{Value,BasicValue,Struct,Signature,Dictionary};
 
 pub struct DBusEncoder {
     val: Vec<Value>,
     signature: String,
-    handling_key: bool
+    key: Option<BasicValue>
 }
 
 #[derive(Debug,PartialEq)]
@@ -15,17 +18,31 @@ pub enum EncoderError {
 }
 
 impl DBusEncoder {
-    fn handle_struct (&self) -> Result<(),EncoderError> {
-        let objs = Vec::new();
-        for i in self.val.into_iter() {
-            objs.push(i);
+    fn handle_struct (&mut self) -> Result<(),EncoderError> {
+        let mut objs = Vec::new();
+        {
+            let val = &self.val;
+            for i in val {
+                objs.push(i.clone());
+            }
         }
         let s = Struct {
             objects: objs,
-            signature: Signature(self.signature.to_string())
+            signature: Signature("(".to_string() + &self.signature + ")")
         };
         self.signature = "".to_string();
         self.val.push(Value::Struct(s));
+        Ok(())
+    }
+
+    fn handle_array (&mut self) -> Result<(),EncoderError> {
+        let mut objs = Vec::new();
+        for i in 0..self.val.len() {
+            self.val.push(Value::BasicValue(BasicValue::Byte(0)));
+            objs.push(self.val.swap_remove(i));
+        }
+        self.val.clear();
+        self.val.push(Value::Array(objs));
         Ok(())
     }
 
@@ -33,14 +50,14 @@ impl DBusEncoder {
         DBusEncoder {
             val: Vec::new(),
             signature: "".to_string(),
-            handling_key: false
+            key: None
         }
     }
     
     pub fn encode<T: Encodable>(obj: &T) -> Result<Value,EncoderError> {
         let mut encoder = DBusEncoder::new();
         try!(obj.encode(&mut encoder));
-        Ok(encoder.val.take().unwrap())
+        Ok(encoder.val.remove(0))
     }
 }
 
@@ -146,34 +163,38 @@ impl Encoder for DBusEncoder {
         f(self)
     }
 
-    fn emit_seq<F>(&mut self, len: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
-        if len == 0 {
-            return Err(EncoderError::EmptyArray);
-        }
-        self.handle_dbus_array(f)
+    fn emit_seq<F>(&mut self, _len: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
+        try!(f(self));
+        self.handle_array()
     }
     fn emit_seq_elt<F>(&mut self, _idx: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
-        let val = f(self);
-        val
+        f(self)
     }
 
-    fn emit_map<F>(&mut self, len: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
-        if len == 0 {
-            return Err(EncoderError::EmptyArray);
-        }
-        self.handle_dbus_array(f)
+    fn emit_map<F>(&mut self, _len: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
+        let map : Dictionary = HashMap::new();
+        self.val.push(Value::Dictionary(map));
+        f(self)
     }
     fn emit_map_elt_key<F>(&mut self, _idx: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
-        self.add_to_sig("{");
-        self.handling_key = true;
-        let val = try!(f(self));
-        self.handling_key = false;
-        Ok(val)
+        try!(f(self));
+        self.key = match self.val.pop().unwrap() {
+            Value::BasicValue(x) => Some(x),
+            _ => return Err(EncoderError::BadKeyType)
+        };
+        Ok(())
     }
     fn emit_map_elt_val<F>(&mut self, _idx: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
-        let val = try!(f(self));
-        self.add_to_sig("}");
-        Ok(val)
+        let key : BasicValue = self.key.take().unwrap();
+        try!(f(self));
+        let val : Value = self.val.pop().unwrap();
+        let mut map = self.val.pop().unwrap();
+        match map {
+            Value::Dictionary(ref mut x) => x.insert(key, val),
+            _ => panic!("No dictionary on stack")
+        };
+        self.val.push(map);
+        Ok(())
     }
 
     fn emit_option<F>(&mut self, _f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
@@ -202,3 +223,14 @@ impl Encoder for DBusEncoder {
     }
 }
 
+#[test]
+fn test_array() {
+    let array : Vec<u32> = vec![1,2,3];
+    let v = DBusEncoder::encode(&array).ok().unwrap();
+    let a2 = vec![
+        Value::BasicValue(BasicValue::Uint32(1)),
+        Value::BasicValue(BasicValue::Uint32(2)),
+        Value::BasicValue(BasicValue::Uint32(3)),
+    ];
+    assert_eq!(v, Value::Array(a2));
+}
