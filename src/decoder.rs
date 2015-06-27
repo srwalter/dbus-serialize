@@ -4,7 +4,7 @@ use rustc_serialize::{Decoder,Decodable};
 
 use types::{BasicValue,Value};
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum DecodeError {
     BadSignature,
     NotSupported,
@@ -277,3 +277,78 @@ fn test_array () {
     let arr : Vec<u32> = DBusDecoder::decode(val).ok().unwrap();
     assert_eq!(vec![1,2,3], arr);
 }
+
+#[cfg(test)]
+mod test {
+    use rustc_serialize::{Decoder,Decodable};
+    use types::{BasicValue,Value,Struct,Signature};
+    use decoder::*;
+
+    #[test]
+    fn test_int () {
+        let v = Value::BasicValue(BasicValue::Uint32(1024));
+        let i : u32 = DBusDecoder::decode(v).ok().unwrap();
+        assert_eq!(i, 1024);
+
+        let x = Value::BasicValue(BasicValue::Uint32(1024));
+        let err = DBusDecoder::decode::<u8>(x).err().unwrap();
+        assert_eq!(err, DecodeError::IntTooNarrow);
+    }
+
+    #[test]
+    fn test_string () {
+        let v = Value::BasicValue(BasicValue::String("foo".to_string()));
+        let i : String = DBusDecoder::decode(v).ok().unwrap();
+        assert_eq!(i, "foo");
+    }
+
+    #[derive(PartialEq,Debug)]
+    struct TestStruct {
+        foo: u8,
+        bar: u32,
+        baz: String,
+    }
+
+    impl Decodable for TestStruct {
+        fn decode<S: Decoder>(s: &mut S) -> Result<Self, S::Error> {
+            s.read_struct("TestStruct", 3, |s: &mut S| {
+                let foo = try!(s.read_struct_field("foo", 0, |s: &mut S| {
+                    s.read_u8()
+                }));
+                let bar = try!(s.read_struct_field("bar", 1, |s: &mut S| {
+                    s.read_u32()
+                }));
+                let baz = try!(s.read_struct_field("baz", 2, |s: &mut S| {
+                    s.read_str()
+                }));
+                Ok(TestStruct {
+                    foo: foo,
+                    bar: bar,
+                    baz: baz
+                })
+            })
+        }
+    }
+
+    #[test]
+    fn test_struct () {
+        let objects = vec![
+            Value::BasicValue(BasicValue::Byte(1)),
+            Value::BasicValue(BasicValue::Uint32(10)),
+            Value::BasicValue(BasicValue::String("baz".to_string()))
+        ];
+        let s = Struct {
+            objects: objects,
+            signature: Signature("(yus)".to_string())
+        };
+        let v = Value::Struct(s);
+
+        let x : TestStruct = DBusDecoder::decode(v).unwrap();
+        assert_eq!(x, TestStruct {
+            foo: 1,
+            bar: 10,
+            baz: "baz".to_string()
+        });
+    }
+}
+
