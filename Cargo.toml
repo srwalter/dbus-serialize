@@ -1,0 +1,4 @@
+[package]
+name = "dbus-serialize"
+version = "0.1.0"
+authors = ["Steven Walter <stevenrwalter@gmail.com>"]
