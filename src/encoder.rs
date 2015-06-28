@@ -61,6 +61,12 @@ impl DBusEncoder {
     }
 }
 
+impl<T: Encodable> From<T> for Value {
+    fn from(x: T) -> Value {
+        DBusEncoder::encode(&x).unwrap()
+    }
+}
+
 impl Encoder for DBusEncoder {
     type Error = EncoderError;
 

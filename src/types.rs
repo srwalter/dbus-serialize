@@ -128,3 +128,10 @@ impl<'a> From<&'a Value> for String {
     }
 }
 
+#[test]
+fn test_from () {
+    let x = Value::from(12);
+    assert_eq!(x, Value::BasicValue(BasicValue::Int32(12)));
+    let y = Value::from("foobar");
+    assert_eq!(y, Value::BasicValue(BasicValue::String("foobar".to_string())));
+}
