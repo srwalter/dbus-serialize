@@ -22,7 +22,7 @@ pub struct Path(pub String);
 pub struct Signature(pub String);
 
 impl BasicValue {
-    fn get_signature(&self) -> &str {
+    pub fn get_signature(&self) -> &str {
         match self {
             &BasicValue::Byte(_) => "y",
             &BasicValue::Boolean(_) => "b",
@@ -127,7 +127,7 @@ pub enum Value {
 }
 
 impl Value {
-    fn get_signature(&self) -> &str {
+    pub fn get_signature(&self) -> &str {
         match self {
             &Value::BasicValue(ref x) => x.get_signature(),
             &Value::Double(_) => "d",
