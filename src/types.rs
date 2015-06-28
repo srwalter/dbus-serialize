@@ -33,6 +33,15 @@ pub struct Variant {
     pub signature: Signature
 }
 
+impl Variant {
+    pub fn new (v: Value, s: &str) -> Variant {
+        Variant {
+            object: Box::new(v),
+            signature: Signature(s.to_string())
+        }
+    }
+}
+
 pub type Dictionary = HashMap<BasicValue,Value>;
 
 #[derive(PartialEq,Debug,Clone)]
