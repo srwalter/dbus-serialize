@@ -163,7 +163,7 @@ impl Decoder for DBusDecoder {
 
     fn read_seq<T, F>(&mut self, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self, usize) -> Result<T, Self::Error> {
         let len = match self.value {
-            Value::Array(ref x) => x.len(),
+            Value::Array(ref x) => x.objects.len(),
             _ => return Err(DecodeError::BadSignature)
         };
         f(self, len)
@@ -171,8 +171,8 @@ impl Decoder for DBusDecoder {
     fn read_seq_elt<T, F>(&mut self, idx: usize, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self) -> Result<T, Self::Error> {
         let val = match self.value {
             Value::Array(ref mut x) => {
-                x.push(Value::BasicValue(BasicValue::Byte(0)));
-                x.swap_remove(idx)
+                x.objects.push(Value::BasicValue(BasicValue::Byte(0)));
+                x.objects.swap_remove(idx)
             },
             _ => return Err(DecodeError::BadSignature)
         };
@@ -182,7 +182,7 @@ impl Decoder for DBusDecoder {
 
     fn read_map<T, F>(&mut self, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self, usize) -> Result<T, Self::Error> {
         let len = match self.value {
-            Value::Dictionary(ref x) => x.keys().len(),
+            Value::Dictionary(ref x) => x.map.keys().len(),
             _ => return Err(DecodeError::BadSignature)
         };
         f(self, len)
@@ -193,9 +193,9 @@ impl Decoder for DBusDecoder {
             _ => return Err(DecodeError::BadSignature)
         };
         let key = {
-            dict.keys().next().unwrap().clone()
+            dict.map.keys().next().unwrap().clone()
         };
-        self.map_val = Some(dict.remove(&key).unwrap());
+        self.map_val = Some(dict.map.remove(&key).unwrap());
 
         let mut subdecoder = DBusDecoder::new(Value::BasicValue(key));
         f(&mut subdecoder)
@@ -266,23 +266,23 @@ impl Decoder for DBusDecoder {
     }
 }
 
-#[test]
-fn test_array () {
-    let vec = vec![
-        Value::BasicValue(BasicValue::Uint32(1)),
-        Value::BasicValue(BasicValue::Uint32(2)),
-        Value::BasicValue(BasicValue::Uint32(3)),
-    ];
-    let val = Value::Array(vec);
-    let arr : Vec<u32> = DBusDecoder::decode(val).ok().unwrap();
-    assert_eq!(vec![1,2,3], arr);
-}
-
 #[cfg(test)]
 mod test {
     use rustc_serialize::{Decoder,Decodable};
-    use types::{BasicValue,Value,Struct,Signature};
+    use types::{BasicValue,Value,Struct,Signature,Array};
     use decoder::*;
+
+    #[test]
+    fn test_array () {
+        let vec = vec![
+            Value::BasicValue(BasicValue::Uint32(1)),
+            Value::BasicValue(BasicValue::Uint32(2)),
+            Value::BasicValue(BasicValue::Uint32(3)),
+        ];
+        let val = Value::Array(Array::new(vec));
+        let arr : Vec<u32> = DBusDecoder::decode(val).ok().unwrap();
+        assert_eq!(vec![1,2,3], arr);
+    }
 
     #[test]
     fn test_int () {

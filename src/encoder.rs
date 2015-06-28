@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rustc_serialize::{Encoder,Encodable};
 
-use types::{Value,BasicValue,Struct,Signature,Dictionary};
+use types::{Value,BasicValue,Struct,Signature,Dictionary,Array};
 
 pub struct DBusEncoder {
     val: Vec<Value>,
@@ -42,7 +42,7 @@ impl DBusEncoder {
             objs.push(self.val.swap_remove(i));
         }
         self.val.clear();
-        self.val.push(Value::Array(objs));
+        self.val.push(Value::Array(Array::new(objs)));
         Ok(())
     }
 
@@ -178,9 +178,18 @@ impl Encoder for DBusEncoder {
     }
 
     fn emit_map<F>(&mut self, _len: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
-        let map : Dictionary = HashMap::new();
+        // Yes, i'm intentionally creating a Dictionary with an invalid signature...
+        let map : Dictionary = Dictionary::new_with_sig(HashMap::new(), "".to_string());
         self.val.push(Value::Dictionary(map));
-        f(self)
+        try!(f(self));
+
+        // Fix up the signature now that the map hopefully has elements in it.
+        let x = match self.val.pop().unwrap() {
+            Value::Dictionary(x) => x.map,
+            _ => panic!("Where'd my dictionary go?!")
+        };
+        self.val.push(Value::Dictionary(Dictionary::new(x)));
+        Ok(())
     }
     fn emit_map_elt_key<F>(&mut self, _idx: usize, f: F) -> Result<(), Self::Error> where F: FnOnce(&mut Self) -> Result<(), Self::Error> {
         try!(f(self));
@@ -196,7 +205,7 @@ impl Encoder for DBusEncoder {
         let val : Value = self.val.pop().unwrap();
         let mut map = self.val.pop().unwrap();
         match map {
-            Value::Dictionary(ref mut x) => x.insert(key, val),
+            Value::Dictionary(ref mut x) => x.map.insert(key, val),
             _ => panic!("No dictionary on stack")
         };
         self.val.push(map);
@@ -238,5 +247,5 @@ fn test_array() {
         Value::BasicValue(BasicValue::Uint32(2)),
         Value::BasicValue(BasicValue::Uint32(3)),
     ];
-    assert_eq!(v, Value::Array(a2));
+    assert_eq!(v, Value::Array(Array::new(a2)));
 }
