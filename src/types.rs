@@ -27,6 +27,12 @@ pub struct Struct {
     pub signature: Signature
 }
 
+#[derive(PartialEq,Debug,Clone)]
+pub struct Variant {
+    pub object: Box<Value>,
+    pub signature: Signature
+}
+
 pub type Dictionary = HashMap<BasicValue,Value>;
 
 #[derive(PartialEq,Debug,Clone)]
@@ -34,7 +40,7 @@ pub enum Value {
     BasicValue(BasicValue),
     Double(f64),
     Array(Vec<Value>),
-    Variant(Box<Value>),
+    Variant(Variant),
     Struct(Struct),
     Dictionary(Dictionary)
 }
