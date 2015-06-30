@@ -2,8 +2,9 @@
 name = "dbus-serialize"
 license = "LGPL-2.1"
 description = "Encoder / Decoder for D-Bus Types"
+documentation = "http://srwalter.github.io/dbus-serialize/doc/dbus_serialize/types/index.html"
 repository = "https://github.com/srwalter/dbus-serialize.git"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Steven Walter <stevenrwalter@gmail.com>"]
 
 [dependencies]
