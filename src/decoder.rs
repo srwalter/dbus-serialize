@@ -1,3 +1,4 @@
+//! Implements the rustc_serialize::Decoder trait
 use std;
 
 use rustc_serialize::{Decoder,Decodable};

@@ -1,5 +1,8 @@
+//! Contains the Value and BasicValue enums, as well as traits and helper types for them
 use std::collections::HashMap;
 
+/// BasicValue covers the "basic" D-Bus types, that is those that are allowed to be used as keys in
+/// a dictionary.
 #[derive(PartialEq,Eq,Debug,Hash,Clone)]
 pub enum BasicValue {
     Byte(u8),
@@ -22,6 +25,7 @@ pub struct Path(pub String);
 pub struct Signature(pub String);
 
 impl BasicValue {
+    /// Returns the D-Bus type signature that corresponds to the Value
     pub fn get_signature(&self) -> &str {
         match self {
             &BasicValue::Byte(_) => "y",
@@ -39,6 +43,7 @@ impl BasicValue {
     }
 }
 
+/// A Struct is an ordered sequence of Value objects, which may be of different varieties
 #[derive(PartialEq,Debug,Clone)]
 pub struct Struct {
     pub objects: Vec<Value>,
@@ -60,6 +65,8 @@ impl Variant {
     }
 }
 
+/// An Array is an ordered sequence of Value objects which must all be of the same variety.  That
+/// is, it is not value to have a Uint8 and a Uint32 as elements of the same Array.
 #[derive(Clone,Debug,PartialEq)]
 pub struct Array {
     pub objects: Vec<Value>,
@@ -67,10 +74,12 @@ pub struct Array {
 }
 
 impl Array {
-    // This function can only be used if it is never possible for the
-    // input vector to be empty.  If it is empty, this function will
-    // panic.  The reason is that it is impossible to determine the type
-    // signature for an empty vector.  Use new_with_sig instead.
+    /// Create a new array from the given vector of Value.  This function may only be used when it
+    /// is never possible for the input vector to be empty.  The reason is that it is impossible to
+    /// determine the type signature for an empty vector.  Use new_with_sig instead.
+    ///
+    /// # Panics
+    /// If objects.len() is 0, this function will panic.
     pub fn new(objects: Vec<Value>) -> Array {
         let sig = objects.iter().next().unwrap().get_signature().to_string();
         Array {
@@ -79,6 +88,8 @@ impl Array {
         }
     }
 
+    /// Create a new array from the given vector of Value.  If objects is non-empty, then sig must
+    /// match the type of the contents.
     pub fn new_with_sig(objects: Vec<Value>, sig: String) -> Array {
         Array {
             objects: objects,
@@ -94,10 +105,12 @@ pub struct Dictionary {
 }
 
 impl Dictionary {
-    // This function can only be used if it is never possible for the
-    // input map to be empty.  If it is empty, this function will
-    // panic.  The reason is that it is impossible to determine the type
-    // signature for an empty map.  Use new_with_sig instead.
+    /// Create a new Dictionary from the given map.  This function may only be used when it
+    /// is never possible for the input map to be empty.  The reason is that it is impossible to
+    /// determine the type signature for an empty vector.  Use new_with_sig instead.
+    ///
+    /// # Panics
+    /// If map.len() is 0, this function will panic.
     pub fn new(map: HashMap<BasicValue,Value>) -> Dictionary {
         let key_type = map.keys().next().unwrap().get_signature().to_string();
         let val_type = map.values().next().unwrap().get_signature().to_string();
@@ -108,6 +121,8 @@ impl Dictionary {
         }
     }
 
+    /// Create a new Dictionary from the given map.  If map is non-empty, then sig must
+    /// match the type of the contents.
     pub fn new_with_sig(map: HashMap<BasicValue,Value>, sig: String) -> Dictionary {
         Dictionary {
             map: map,
@@ -116,6 +131,7 @@ impl Dictionary {
     }
 }
 
+/// Root type for any D-Bus value
 #[derive(PartialEq,Debug,Clone)]
 pub enum Value {
     BasicValue(BasicValue),
@@ -127,6 +143,7 @@ pub enum Value {
 }
 
 impl Value {
+    /// Returns the D-Bus type signature that corresponds to the Value
     pub fn get_signature(&self) -> &str {
         match self {
             &Value::BasicValue(ref x) => x.get_signature(),

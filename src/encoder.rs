@@ -1,3 +1,4 @@
+//! Implements the rustc_serialize::Encoder trait
 use std::collections::HashMap;
 
 use rustc_serialize::{Encoder,Encodable};
