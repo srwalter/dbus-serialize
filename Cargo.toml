@@ -1,5 +1,7 @@
 [package]
 name = "dbus-serialize"
+license = "LGPL-2.1"
+description = "Encoder / Decoder for D-Bus Types"
 version = "0.1.0"
 authors = ["Steven Walter <stevenrwalter@gmail.com>"]
 
