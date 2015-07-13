@@ -157,6 +157,8 @@ impl Decoder for DBusDecoder {
         };
         let x = match basic_val {
             &BasicValue::String(ref x) => x.to_string(),
+            &BasicValue::ObjectPath(ref x) => x.0.to_string(),
+            &BasicValue::Signature(ref x) => x.0.to_string(),
             _ => return Err(DecodeError::BadSignature)
         };
         Ok(x)
@@ -270,7 +272,7 @@ impl Decoder for DBusDecoder {
 #[cfg(test)]
 mod test {
     use rustc_serialize::{Decoder,Decodable};
-    use types::{BasicValue,Value,Struct,Signature,Array};
+    use types::{BasicValue,Value,Path,Struct,Signature,Array};
     use decoder::*;
 
     #[test]
@@ -299,6 +301,14 @@ mod test {
     #[test]
     fn test_string () {
         let v = Value::BasicValue(BasicValue::String("foo".to_string()));
+        let i : String = DBusDecoder::decode(v).ok().unwrap();
+        assert_eq!(i, "foo");
+
+        let v = Value::BasicValue(BasicValue::Signature(Signature("foo".to_string())));
+        let i : String = DBusDecoder::decode(v).ok().unwrap();
+        assert_eq!(i, "foo");
+
+        let v = Value::BasicValue(BasicValue::ObjectPath(Path("foo".to_string())));
         let i : String = DBusDecoder::decode(v).ok().unwrap();
         assert_eq!(i, "foo");
     }
