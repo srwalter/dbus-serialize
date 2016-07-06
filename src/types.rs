@@ -43,13 +43,18 @@ impl BasicValue {
     }
 }
 
-/// A Struct is an ordered sequence of Value objects, which may be of different varieties
+/// A Struct is an ordered sequence of Value objects, which may be of different varieties.
+/// signature must be of the form "(<type>)", where <type> is the signature of contents of
+/// objects.
 #[derive(PartialEq,Debug,Clone)]
 pub struct Struct {
     pub objects: Vec<Value>,
     pub signature: Signature
 }
 
+/// A Variant is a boxed type-erased value.  It is trasmitted on the wire with its signature.
+/// It is useful for arrays with varying types and for allowing DBus method argument types to be
+/// determined at runtime.  signature contains the signature of the boxed value.
 #[derive(PartialEq,Debug,Clone)]
 pub struct Variant {
     pub object: Box<Value>,
@@ -57,6 +62,7 @@ pub struct Variant {
 }
 
 impl Variant {
+    /// Create a new variant to wrap the given value.  s must be the signature of v.
     pub fn new (v: Value, s: &str) -> Variant {
         Variant {
             object: Box::new(v),
@@ -81,15 +87,17 @@ impl Array {
     /// # Panics
     /// If objects.len() is 0, this function will panic.
     pub fn new(objects: Vec<Value>) -> Array {
-        let sig = objects.iter().next().unwrap().get_signature().to_string();
+        let inner_sig = objects.iter().next().unwrap().get_signature().to_string();
+        let sig = "a".to_string() + &inner_sig;
         Array {
             objects: objects,
             signature: Signature(sig)
         }
     }
 
-    /// Create a new array from the given vector of Value.  If objects is non-empty, then sig must
-    /// match the type of the contents.
+    /// Create a new array from the given vector.  If sig is not of the form a<type>
+    /// or if objects is non-empty and the inner type does not match the type of the contents,
+    /// the resulting value will be invalid and will not encode correctly.
     pub fn new_with_sig(objects: Vec<Value>, sig: String) -> Array {
         Array {
             objects: objects,
@@ -121,8 +129,9 @@ impl Dictionary {
         }
     }
 
-    /// Create a new Dictionary from the given map.  If map is non-empty, then sig must
-    /// match the type of the contents.
+    /// Create a new Dictionary from the given map.  If sig is not of the form a{<type><type>}
+    /// or if map is non-empty and the inner types do not match the type of the map's contents,
+    /// the resulting value will be invalid and will not encode correctly.
     pub fn new_with_sig(map: HashMap<BasicValue,Value>, sig: String) -> Dictionary {
         Dictionary {
             map: map,
