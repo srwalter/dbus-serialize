@@ -1,12 +1,12 @@
 //! Contains the Value and BasicValue enums, as well as traits and helper types for them
-use std::collections::HashMap;
 
 /// BasicValue covers the "basic" D-Bus types, that is those that are allowed to be used as keys in
 /// a dictionary.
-#[derive(PartialEq,Eq,Debug,Hash,Clone)]
+#[derive(PartialEq,Debug,Clone,PartialOrd)]
 pub enum BasicValue {
     Byte(u8),
     Boolean(bool),
+    Double(f64),
     Int16(i16),
     Uint16(u16),
     Int32(i32),
@@ -18,10 +18,10 @@ pub enum BasicValue {
     Signature(Signature),
 }
 
-#[derive(Clone,PartialEq,Eq,Debug,Hash)]
+#[derive(Clone,PartialEq,Eq,Debug,Hash,PartialOrd,Ord)]
 pub struct Path(pub String);
 
-#[derive(Clone,PartialEq,Eq,Debug,Hash)]
+#[derive(Clone,PartialEq,Eq,Debug,Hash,PartialOrd,Ord)]
 pub struct Signature(pub String);
 
 impl BasicValue {
@@ -30,6 +30,7 @@ impl BasicValue {
         match self {
             &BasicValue::Byte(_) => "y",
             &BasicValue::Boolean(_) => "b",
+            &BasicValue::Double(_) => "d",
             &BasicValue::Int16(_) => "n",
             &BasicValue::Uint16(_) => "q",
             &BasicValue::Int32(_) => "i",
@@ -107,34 +108,44 @@ impl Array {
 }
 
 #[derive(Clone,Debug,PartialEq)]
+pub struct DictEntry {
+    pub key: BasicValue,
+    pub value: Value
+}
+
+/// A dictionary is essentially an array of key-value pairs. It is not directly representable as a
+/// HashMap because D-Bus dictionaries can have floating-point keys (and floating point numbers do
+/// not have a unique representation).
+#[derive(Clone,Debug,PartialEq)]
 pub struct Dictionary {
-    pub map: HashMap<BasicValue,Value>,
+    pub entries: Vec<DictEntry>,
     signature: Signature
 }
 
 impl Dictionary {
-    /// Create a new Dictionary from the given map.  This function may only be used when it
-    /// is never possible for the input map to be empty.  The reason is that it is impossible to
-    /// determine the type signature for an empty vector.  Use new_with_sig instead.
+    /// Create a new Dictionary from the given vector of DictEntry objects.  This function may only
+    /// be used when it is never possible for the input vector to be empty.  The reason is that it
+    /// is impossible to determine the type signature for an empty vector.  Use new_with_sig
+    /// instead.
     ///
     /// # Panics
-    /// If map.len() is 0, this function will panic.
-    pub fn new(map: HashMap<BasicValue,Value>) -> Dictionary {
-        let key_type = map.keys().next().unwrap().get_signature().to_string();
-        let val_type = map.values().next().unwrap().get_signature().to_string();
+    /// If entries.len() is 0, this function will panic.
+    pub fn new(entries: Vec<DictEntry>) -> Dictionary {
+        let key_type = entries.first().unwrap().key.get_signature().to_string();
+        let val_type = entries.first().unwrap().value.get_signature().to_string();
         let sig = "a{".to_string() + &key_type + &val_type + "}";
         Dictionary {
-            map: map,
+            entries: entries,
             signature: Signature(sig)
         }
     }
 
-    /// Create a new Dictionary from the given map.  If sig is not of the form a{<type><type>}
-    /// or if map is non-empty and the inner types do not match the type of the map's contents,
-    /// the resulting value will be invalid and will not encode correctly.
-    pub fn new_with_sig(map: HashMap<BasicValue,Value>, sig: String) -> Dictionary {
+    /// Create a new Dictionary from the given vector of entries.  If sig is not of the form
+    /// a{<type><type>} or if the entries vector is non-empty and the inner types do not match the
+    /// type of the entries, the resulting value will be invalid and will not encode correctly.
+    pub fn new_with_sig(entries: Vec<DictEntry>, sig: String) -> Dictionary {
         Dictionary {
-            map: map,
+            entries: entries,
             signature: Signature(sig)
         }
     }
@@ -144,7 +155,6 @@ impl Dictionary {
 #[derive(PartialEq,Debug,Clone)]
 pub enum Value {
     BasicValue(BasicValue),
-    Double(f64),
     Array(Array),
     Variant(Variant),
     Struct(Struct),
@@ -156,7 +166,6 @@ impl Value {
     pub fn get_signature(&self) -> &str {
         match self {
             &Value::BasicValue(ref x) => x.get_signature(),
-            &Value::Double(_) => "d",
             &Value::Array(ref x) => &x.signature.0,
             &Value::Variant(_) => "v",
             &Value::Struct(ref x) => &x.signature.0,
