@@ -13,8 +13,7 @@ pub enum DecodeError {
 }
 
 pub struct DBusDecoder {
-    value: Value,
-    map_val: Option<Value>
+    value: Value
 }
 
 impl DBusDecoder {
@@ -26,7 +25,7 @@ impl DBusDecoder {
             &BasicValue::Uint64(x) => x,
             _ => return Err(DecodeError::BadSignature)
         };
-	Ok(val)
+        Ok(val)
     }
 
     fn get_signed_int (v: &BasicValue) -> Result<i64,DecodeError> {
@@ -36,7 +35,7 @@ impl DBusDecoder {
             &BasicValue::Int64(x) => x as i64,
             _ => return Err(DecodeError::BadSignature)
         };
-	Ok(val)
+        Ok(val)
     }
 
     fn read_unsigned_int (v: &Value, max: usize) -> Result<u64,DecodeError> {
@@ -46,10 +45,10 @@ impl DBusDecoder {
         };
 
         // Make sure the value will fit
-	let x = try!(DBusDecoder::get_unsigned_int(basic_val));
-	if x > (max as u64) {
+        let x = try!(DBusDecoder::get_unsigned_int(basic_val));
+        if x > (max as u64) {
             return Err(DecodeError::IntTooNarrow);
-	}
+        }
         Ok(x)
     }
 
@@ -58,22 +57,21 @@ impl DBusDecoder {
             &Value::BasicValue(ref x) => x,
             _ => return Err(DecodeError::BadSignature)
         };
-	let x = try!(DBusDecoder::get_signed_int(basic_val));
+        let x = try!(DBusDecoder::get_signed_int(basic_val));
 
         // Make sure the value will fit
-	if x > (max as i64) {
+        if x > (max as i64) {
             return Err(DecodeError::IntTooNarrow);
-	}
-	if x < (min as i64) {
+        }
+        if x < (min as i64) {
             return Err(DecodeError::IntTooNarrow);
-	}
+        }
         Ok(x)
     }
 
     pub fn new (v: Value) -> DBusDecoder {
         DBusDecoder{
-            value: v,
-            map_val: None
+            value: v
         }
     }
 
@@ -85,13 +83,13 @@ impl DBusDecoder {
 
 impl Decoder for DBusDecoder {
     type Error = DecodeError;
-    
+
     fn read_usize(&mut self) -> Result<usize, Self::Error> {
         let basic_val = match &self.value {
             &Value::BasicValue(ref x) => x,
             _ => return Err(DecodeError::BadSignature)
         };
-	let x = try!(DBusDecoder::get_unsigned_int(basic_val));
+        let x = try!(DBusDecoder::get_unsigned_int(basic_val));
         Ok(x as usize)
     }
     fn read_u64(&mut self) -> Result<u64, Self::Error> {
@@ -113,7 +111,7 @@ impl Decoder for DBusDecoder {
             &Value::BasicValue(ref x) => x,
             _ => return Err(DecodeError::BadSignature)
         };
-	let x = try!(DBusDecoder::get_signed_int(basic_val));
+        let x = try!(DBusDecoder::get_signed_int(basic_val));
         Ok(x as isize)
     }
     fn read_i64(&mut self) -> Result<i64, Self::Error> {
@@ -142,7 +140,7 @@ impl Decoder for DBusDecoder {
     }
     fn read_f64(&mut self) -> Result<f64, Self::Error> {
         match &self.value {
-            &Value::Double(x) => Ok(x),
+            &Value::BasicValue(BasicValue::Double(x)) => Ok(x),
             _ => return Err(DecodeError::BadSignature)
         }
     }
@@ -185,27 +183,33 @@ impl Decoder for DBusDecoder {
 
     fn read_map<T, F>(&mut self, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self, usize) -> Result<T, Self::Error> {
         let len = match self.value {
-            Value::Dictionary(ref x) => x.map.keys().len(),
+            Value::Dictionary(ref x) => x.entries.len(),
             _ => return Err(DecodeError::BadSignature)
         };
         f(self, len)
     }
-    fn read_map_elt_key<T, F>(&mut self, _idx: usize, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self) -> Result<T, Self::Error> {
-        let dict = match self.value {
-            Value::Dictionary(ref mut x) => x,
+    fn read_map_elt_key<T, F>(&mut self, idx: usize, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self) -> Result<T, Self::Error> {
+        let mut entry = match self.value {
+            Value::Dictionary(ref mut x) => {
+                &mut x.entries[idx]
+            },
             _ => return Err(DecodeError::BadSignature)
         };
-        let key = {
-            dict.map.keys().next().unwrap().clone()
-        };
-        self.map_val = Some(dict.map.remove(&key).unwrap());
-
+        let mut key = BasicValue::Byte(0);
+        std::mem::swap(&mut entry.key, &mut key);
         let mut subdecoder = DBusDecoder::new(Value::BasicValue(key));
         f(&mut subdecoder)
     }
-    fn read_map_elt_val<T, F>(&mut self, _idx: usize, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self) -> Result<T, Self::Error> {
-        let val = self.map_val.take().unwrap();
-        let mut subdecoder = DBusDecoder::new(val);
+    fn read_map_elt_val<T, F>(&mut self, idx: usize, f: F) -> Result<T, Self::Error> where F: FnOnce(&mut Self) -> Result<T, Self::Error> {
+        let mut entry = match self.value {
+            Value::Dictionary(ref mut x) => {
+                &mut x.entries[idx]
+            },
+            _ => return Err(DecodeError::BadSignature)
+        };
+        let mut value = Value::BasicValue(BasicValue::Byte(0));
+        std::mem::swap(&mut entry.value, &mut value);
+        let mut subdecoder = DBusDecoder::new(value);
         f(&mut subdecoder)
     }
 
@@ -272,8 +276,9 @@ impl Decoder for DBusDecoder {
 #[cfg(test)]
 mod test {
     use rustc_serialize::{Decoder,Decodable};
-    use types::{BasicValue,Value,Path,Struct,Signature,Array};
+    use types::{BasicValue,Value,Path,Struct,Signature,Array,Dictionary,DictEntry};
     use decoder::*;
+    use std::collections::HashMap;
 
     #[test]
     fn test_array () {
@@ -360,6 +365,31 @@ mod test {
             bar: 10,
             baz: "baz".to_string()
         });
+    }
+
+    #[test]
+    fn test_simple_dictionary () {
+        let dict = Value::Dictionary(Dictionary::new(vec![
+            DictEntry {
+                key: BasicValue::Uint32(10),
+                value: Value::BasicValue(BasicValue::String("baz".to_string())),
+            },
+            DictEntry {
+                key: BasicValue::Uint32(12),
+                value: Value::BasicValue(BasicValue::String("bar".to_string())),
+            },
+            DictEntry {
+                key: BasicValue::Uint32(9),
+                value: Value::BasicValue(BasicValue::String("foo".to_string())),
+            },
+        ]));
+
+        let hm : HashMap<u32,String> = DBusDecoder::decode(dict).unwrap();
+        let mut exp_hm : HashMap<u32,String> = HashMap::new();
+        exp_hm.insert(10, "baz".to_string());
+        exp_hm.insert(12, "bar".to_string());
+        exp_hm.insert(9,  "foo".to_string());
+        assert_eq!(hm, exp_hm);
     }
 }
 

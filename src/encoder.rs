@@ -1,9 +1,7 @@
 //! Implements the rustc_serialize::Encoder trait
-use std::collections::HashMap;
-
 use rustc_serialize::{Encoder,Encodable};
 
-use types::{Value,BasicValue,Struct,Signature,Dictionary,Array};
+use types::{Value,BasicValue,Struct,Signature,DictEntry,Dictionary,Array};
 
 pub struct DBusEncoder {
     val: Vec<Value>,
@@ -115,11 +113,11 @@ impl Encoder for DBusEncoder {
         Ok(())
     }
     fn emit_f64(&mut self, v: f64) -> Result<(), Self::Error> {
-        self.val.push(Value::Double(v));
+        self.val.push(Value::BasicValue(BasicValue::Double(v)));
         Ok(())
     }
     fn emit_f32(&mut self, v: f32) -> Result<(), Self::Error> {
-        self.val.push(Value::Double(v as f64));
+        self.val.push(Value::BasicValue(BasicValue::Double(v as f64)));
         Ok(())
     }
     fn emit_char(&mut self, v: char) -> Result<(), Self::Error> {
@@ -169,13 +167,13 @@ impl Encoder for DBusEncoder {
             return Err(EncoderError::EmptyMap)
         }
         // Yes, i'm intentionally creating a Dictionary with an invalid signature...
-        let map : Dictionary = Dictionary::new_with_sig(HashMap::new(), "".to_string());
+        let map : Dictionary = Dictionary::new_with_sig(Vec::new(), "".to_string());
         self.val.push(Value::Dictionary(map));
         try!(f(self));
 
         // Fix up the signature now that the map hopefully has elements in it.
         let x = match self.val.pop().unwrap() {
-            Value::Dictionary(x) => x.map,
+            Value::Dictionary(x) => x.entries,
             _ => panic!("Where'd my dictionary go?!")
         };
         self.val.push(Value::Dictionary(Dictionary::new(x)));
@@ -195,7 +193,7 @@ impl Encoder for DBusEncoder {
         let val : Value = self.val.pop().unwrap();
         let mut map = self.val.pop().unwrap();
         match map {
-            Value::Dictionary(ref mut x) => x.map.insert(key, val),
+            Value::Dictionary(ref mut x) => x.entries.push(DictEntry{ key: key, value: val}),
             _ => panic!("No dictionary on stack")
         };
         self.val.push(map);
@@ -231,8 +229,8 @@ impl Encoder for DBusEncoder {
 #[cfg(test)]
 mod test {
     use rustc_serialize::{Encoder,Encodable};
-    use std::collections::HashMap;
-    use types::{Value,BasicValue,Struct,Signature,Dictionary,Array};
+    use std::collections::BTreeMap;
+    use types::{Value,BasicValue,Struct,Signature,DictEntry,Dictionary,Array};
     use encoder::*;
 
     #[test]
@@ -282,60 +280,103 @@ mod test {
 
     #[test]
     fn test_map() {
-        let mut map : HashMap<u32,u64> = HashMap::new();
+        // using a BTreeMap (rather than a HashMap) ensures there is a fixed order
+        // to the map, which will be preserved by the encoding process
+        let mut map : BTreeMap<u32,u64> = BTreeMap::new();
         map.insert(1, 100);
         map.insert(2, 200);
         map.insert(3, 300);
         let v = DBusEncoder::encode(&map).ok().unwrap();
-        let mut map2 : HashMap<BasicValue,Value> = HashMap::new();
-        map2.insert(BasicValue::Uint32(1), Value::BasicValue(BasicValue::Uint64(100)));
-        map2.insert(BasicValue::Uint32(2), Value::BasicValue(BasicValue::Uint64(200)));
-        map2.insert(BasicValue::Uint32(3), Value::BasicValue(BasicValue::Uint64(300)));
+        let map2 = vec![
+            DictEntry{
+                key: BasicValue::Uint32(1),
+                value: Value::BasicValue(BasicValue::Uint64(100)),
+            },
+            DictEntry{
+                key: BasicValue::Uint32(2),
+                value: Value::BasicValue(BasicValue::Uint64(200)),
+            },
+            DictEntry{
+                key: BasicValue::Uint32(3),
+                value: Value::BasicValue(BasicValue::Uint64(300)),
+            },
+        ];
         assert_eq!(v, Value::Dictionary(Dictionary::new(map2)));
     }
 
     #[test]
     fn test_empty_map() {
-        let map : HashMap<u32,u64> = HashMap::new();
+        let map : BTreeMap<u32,u64> = BTreeMap::new();
         assert_eq!(DBusEncoder::encode(&map), Err(EncoderError::EmptyMap));
     }
 
     #[test]
     fn test_bad_map_key() {
-        let mut map : HashMap<(u32,u32),u32> = HashMap::new();
+        let mut map : BTreeMap<(u32,u32),u32> = BTreeMap::new();
         map.insert((1,2), 100);
         assert_eq!(DBusEncoder::encode(&map), Err(EncoderError::BadKeyType));
     }
 
     #[test]
     fn test_nested_map() {
-        let mut map1 : HashMap<u64,u16> = HashMap::new();
+        let mut map1 : BTreeMap<u64,u16> = BTreeMap::new();
         map1.insert(1, 10);
         map1.insert(2, 20);
         map1.insert(3, 30);
-        let mut map2 : HashMap<u64,u16> = HashMap::new();
+        let mut map2 : BTreeMap<u64,u16> = BTreeMap::new();
         map2.insert(1, 10);
         map2.insert(2, 20);
-        let mut map3 : HashMap<u64,u16> = HashMap::new();
+        let mut map3 : BTreeMap<u64,u16> = BTreeMap::new();
         map3.insert(19, 190);
-        let mut map : HashMap<i32,HashMap<u64,u16>> = HashMap::new();
-        map.insert(-1, map1);
-        map.insert(-2, map2);
+        let mut map : BTreeMap<i32,BTreeMap<u64,u16>> = BTreeMap::new();
         map.insert(-3, map3);
+        map.insert(-2, map2);
+        map.insert(-1, map1);
         let v = DBusEncoder::encode(&map).ok().unwrap();
-        let mut expected_map1 : HashMap<BasicValue,Value> = HashMap::new();
-        expected_map1.insert(BasicValue::Uint64(1), Value::BasicValue(BasicValue::Uint16(10)));
-        expected_map1.insert(BasicValue::Uint64(2), Value::BasicValue(BasicValue::Uint16(20)));
-        expected_map1.insert(BasicValue::Uint64(3), Value::BasicValue(BasicValue::Uint16(30)));
-        let mut expected_map2 : HashMap<BasicValue,Value> = HashMap::new();
-        expected_map2.insert(BasicValue::Uint64(1), Value::BasicValue(BasicValue::Uint16(10)));
-        expected_map2.insert(BasicValue::Uint64(2), Value::BasicValue(BasicValue::Uint16(20)));
-        let mut expected_map3 : HashMap<BasicValue,Value> = HashMap::new();
-        expected_map3.insert(BasicValue::Uint64(19), Value::BasicValue(BasicValue::Uint16(190)));
-        let mut expected_map : HashMap<BasicValue,Value> = HashMap::new();
-        expected_map.insert(BasicValue::Int32(-1), Value::Dictionary(Dictionary::new(expected_map1)));
-        expected_map.insert(BasicValue::Int32(-2), Value::Dictionary(Dictionary::new(expected_map2)));
-        expected_map.insert(BasicValue::Int32(-3), Value::Dictionary(Dictionary::new(expected_map3)));
+        let expected_map1 = vec![
+            DictEntry{
+                key: BasicValue::Uint64(1),
+                value: Value::BasicValue(BasicValue::Uint16(10)),
+            },
+            DictEntry{
+                key: BasicValue::Uint64(2),
+                value: Value::BasicValue(BasicValue::Uint16(20)),
+            },
+            DictEntry{
+                key: BasicValue::Uint64(3),
+                value: Value::BasicValue(BasicValue::Uint16(30)),
+            },
+        ];
+        let expected_map2 = vec![
+            DictEntry{
+                key: BasicValue::Uint64(1),
+                value: Value::BasicValue(BasicValue::Uint16(10)),
+            },
+            DictEntry{
+                key: BasicValue::Uint64(2),
+                value: Value::BasicValue(BasicValue::Uint16(20)),
+            },
+        ];
+        let expected_map3 = vec![
+            DictEntry{
+                key: BasicValue::Uint64(19),
+                value: Value::BasicValue(BasicValue::Uint16(190)),
+            },
+        ];
+        let expected_map = vec![
+            DictEntry{
+                key: BasicValue::Int32(-3),
+                value: Value::Dictionary(Dictionary::new(expected_map3)),
+            },
+            DictEntry{
+                key: BasicValue::Int32(-2),
+                value: Value::Dictionary(Dictionary::new(expected_map2)),
+            },
+            DictEntry{
+                key: BasicValue::Int32(-1),
+                value: Value::Dictionary(Dictionary::new(expected_map1)),
+            },
+        ];
         assert_eq!(v, Value::Dictionary(Dictionary::new(expected_map)));
     }
 
